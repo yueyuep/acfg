@@ -1,29 +1,136 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import angr
+import argparse
 import os
 from angrutils import *
 
 
-def test(bin_file):
+def in_ins_list(instruction, ins_list):
+    """
+    判断当前指令是否在指令列表中
+    :param instruction:
+    :param ins_list:
+    :return:
+    """
+    up_ins = instruction.upper()
+    for ins in ins_list:
+        if ins in up_ins:
+            return True
+    return False
+
+
+def handle_ins(insns):
+    """
+    统计基本块中指令类型的数量
+    :param insns:
+    :return:
+    """
+    transfer_ins = ['MOV', 'PUSH', 'POP', 'XCHG', 'IN', 'OUT', 'XLAT', 'LEA', 'LDS', 'LES', 'LAHF', 'SAHF', 'PUSHF',
+                    'POPF']
+    arithmetic_ins = ['ADD', 'SUB', 'MUL', 'DIV', 'XOR', 'INC', 'DEC', 'IMUL', 'IDIV', 'OR', 'NOT', 'SLL', 'SRL']
+    calls_ins = ['CALL']
+
+    no_transfer = 0
+    no_arithmetic = 0
+    no_calls = 0
+    for ins in insns:
+        ins_name = ins.insn_name()
+        if in_ins_list(ins_name, transfer_ins):
+            no_transfer = no_transfer + 1
+        if in_ins_list(ins_name, arithmetic_ins):
+            no_arithmetic = no_arithmetic + 1
+        if in_ins_list(ins_name, calls_ins):
+            no_calls = no_calls + 1
+    return no_transfer, no_calls, no_arithmetic
+
+
+def handle_block(block, no_str):
+    """
+    统计每个基本的特征
+    :param block:
+    :param no_str:
+    :return:
+    """
+    # no of string constants
+    no_string = no_str
+    # no of numeric constants
+    no_numeric = len(block.vex.constants)
+    # no of instructions
+    no_instructions = block.instructions
+    # 指令集区分并计数
+    no_transfer, no_calls, no_arithmetic = handle_ins(block.capstone.insns)
+    # no of offspring
+    no_offspring = 0
+    return [no_string, no_numeric, no_transfer, no_calls, no_instructions, no_arithmetic, no_offspring]
+
+
+def handle_function(entry_func, bin_path):
+    """
+    提取每个函数的特征并存储
+    :param entry_func:
+    :param bin_path:
+    :return:
+    """
+    function_feature = dict()
+    function_feature["bin_path"] = bin_path
+    function_feature["function_name"] = entry_func.name
+    function_feature["features"] = []
+    function_feature["adj"] = []
+    # # no of string constants
+    f_no_string = len(entry_func.string_references())
+    block_cnt = 0
+    # 提取函数内每个基本块的属性
+    for blk in entry_func.blocks:
+        function_feature["features"].append(handle_block(blk, f_no_string))
+        block_cnt = block_cnt + 1
+    function_feature["block"] = block_cnt
+    # 节点的邻接矩阵
+    matrix = nx.adjacency_matrix(entry_func.graph).todense().tolist()
+    for i, line in enumerate(matrix):
+        # 当前节点到自己无边
+        line[i] = 0
+        no_offspring = line.count(1)
+        function_feature["features"][i][-1] = no_offspring
+        function_feature["adj"].append(line)
+
+
+def handle_bin(bin_file):
     if not os.path.isfile(bin_file):
         print("文件不存在->", bin_file)
         return
     proj = angr.Project(bin_file, auto_load_libs=False)
-
+    cfg = proj.analyses.CFGEmulated()
     # cfg = proj.analyses.CFGFast()
-    cfg = proj.analyses.CFGEmulated(keep_state=True)
-    funcs = cfg.kb.functions
+    for func in cfg.kb.functions.values():
+        handle_function(cfg.kb.functions[func.addr], bin_file.strip())
 
-    # 获取函数地址和函数名
-    # for func in proj.kb.functions.values():
-    #     print(func.addr, func.name)
 
-    # result = dict(proj.kb.functions)
-    # print(result)
-    print(cfg)
+def main_text(text):
+    """
+    从文本中逐行读取二进制程序的路径并进行处理
+    :param text:
+    :return:
+    """
+    if not os.path.isfile(text):
+        print("文件不存在->", text)
+        return
+    with open(text, "r") as f:
+        for line in f:
+            print("正在提取->", line)
+            # handle_bin(line.strip())
 
 
 if __name__ == "__main__":
-    print("angr start")
-    test("data/cgibin")
+    parser = argparse.ArgumentParser(description="提取二进制程序特征")
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.0')
+    parser.add_argument('-t', '--text', action='store_true', help='从文本中读取二进制程序路径')
+    parser.add_argument('inputFile', help='二进制文件或路径列表文件')
+    args = parser.parse_args()
+
+    # 输入为保存所有二进制程序路径的列表文件
+    if args.text:
+        main_text(args.inputFile)
+    else:
+        print("尚不支持的参数!")
+    print("all task done!")
