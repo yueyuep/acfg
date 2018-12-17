@@ -4,6 +4,14 @@ import angr
 import argparse
 import os
 from angrutils import *
+import pymongo
+
+# 数据库链接URL
+DBURL = "mongodb://10.10.2.192:27017/"
+# 数据库名
+DB = "feature"
+# 集合名
+COL = "bin"
 
 
 def in_ins_list(instruction, ins_list):
@@ -65,11 +73,12 @@ def handle_block(block, no_str):
     return [no_string, no_numeric, no_transfer, no_calls, no_instructions, no_arithmetic, no_offspring]
 
 
-def handle_function(entry_func, bin_path):
+def handle_function(entry_func, bin_path, output_path=None):
     """
     提取每个函数的特征并存储
     :param entry_func:
     :param bin_path:
+    :param output_path:
     :return:
     """
     function_feature = dict()
@@ -77,7 +86,7 @@ def handle_function(entry_func, bin_path):
     function_feature["function_name"] = entry_func.name
     function_feature["features"] = []
     function_feature["adj"] = []
-    # # no of string constants
+    # no of string constants
     f_no_string = len(entry_func.string_references())
     block_cnt = 0
     # 提取函数内每个基本块的属性
@@ -93,17 +102,31 @@ def handle_function(entry_func, bin_path):
         no_offspring = line.count(1)
         function_feature["features"][i][-1] = no_offspring
         function_feature["adj"].append(line)
+    if output_path is None:
+        return function_feature
+    else:
+        with open(output_path, "a+", encoding="utf-8") as f:
+            f.writelines(str(function_feature) + '\n')
 
 
-def handle_bin(bin_file):
+def handle_bin(bin_file, output_path=None):
     if not os.path.isfile(bin_file):
         print("文件不存在->", bin_file)
         return
+    db = None
+    if output_path is None:
+        client = pymongo.MongoClient(DBURL)
+        db = client[DB]
     proj = angr.Project(bin_file, auto_load_libs=False)
     cfg = proj.analyses.CFGEmulated()
     # cfg = proj.analyses.CFGFast()
     for func in cfg.kb.functions.values():
-        handle_function(cfg.kb.functions[func.addr], bin_file.strip())
+        if output_path is not None:
+            handle_function(cfg.kb.functions[func.addr], bin_file.strip(), output_path)
+        else:
+            feature = handle_function(cfg.kb.functions[func.addr], bin_file.strip())
+            collection = db[COL]
+            collection.insert(feature)
 
 
 def main_text(text):
@@ -118,19 +141,24 @@ def main_text(text):
     with open(text, "r") as f:
         for line in f:
             print("正在提取->", line)
-            # handle_bin(line.strip())
+            handle_bin(line.strip())
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="提取二进制程序特征")
     parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.0')
     parser.add_argument('-t', '--text', action='store_true', help='从文本中读取二进制程序路径')
+    parser.add_argument('-o', '--output', type=str, default=None, help='=存储路径')
     parser.add_argument('inputFile', help='二进制文件或路径列表文件')
     args = parser.parse_args()
 
     # 输入为保存所有二进制程序路径的列表文件
     if args.text:
         main_text(args.inputFile)
+        print("all task done!")
     else:
-        print("尚不支持的参数!")
-    print("all task done!")
+        if args.output is not None:
+            handle_bin(args.inputFile, args.output)
+            print("done->", args.output)
+        else:
+            print("请指定输出文件路径!")
