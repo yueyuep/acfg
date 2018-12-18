@@ -94,6 +94,9 @@ def handle_function(entry_func, bin_path, output_path=None):
         function_feature["features"].append(handle_block(blk, f_no_string))
         block_cnt = block_cnt + 1
     function_feature["block"] = block_cnt
+    # 节点数目为0时直接返回
+    if 0 == len(entry_func.graph):
+        return
     # 节点的邻接矩阵
     matrix = nx.adjacency_matrix(entry_func.graph).todense().tolist()
     for i, line in enumerate(matrix):
@@ -125,8 +128,8 @@ def handle_bin(bin_file, output_path=None):
             handle_function(cfg.kb.functions[func.addr], bin_file.strip(), output_path)
         else:
             feature = handle_function(cfg.kb.functions[func.addr], bin_file.strip())
-            collection = db[COL]
-            collection.insert(feature)
+            if feature is not None:
+                db[COL].insert(feature)
 
 
 def main_text(text):
@@ -146,7 +149,7 @@ def main_text(text):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="提取二进制程序特征")
-    parser.add_argument('-v', '--version', action='version', version='%(prog)s 1.0')
+    parser.add_argument('-v', '--version', action='version', version='acfg 1.0')
     parser.add_argument('-t', '--text', action='store_true', help='从文本中读取二进制程序路径')
     parser.add_argument('-o', '--output', type=str, default=None, help='=存储路径')
     parser.add_argument('inputFile', help='二进制文件或路径列表文件')
