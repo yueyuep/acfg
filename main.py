@@ -4,6 +4,7 @@ import angr
 import argparse
 import os
 from angrutils import *
+import multiprocessing as mp
 import pymongo
 
 # 数据库链接URL
@@ -120,16 +121,19 @@ def handle_bin(bin_file, output_path=None):
     if output_path is None:
         client = pymongo.MongoClient(DBURL)
         db = client[DB]
-    proj = angr.Project(bin_file, auto_load_libs=False)
-    cfg = proj.analyses.CFGEmulated()
-    # cfg = proj.analyses.CFGFast()
-    for func in cfg.kb.functions.values():
-        if output_path is not None:
-            handle_function(cfg.kb.functions[func.addr], bin_file.strip(), output_path)
-        else:
-            feature = handle_function(cfg.kb.functions[func.addr], bin_file.strip())
-            if feature is not None:
-                db[COL].insert(feature)
+    try:
+        proj = angr.Project(bin_file, auto_load_libs=False)
+        cfg = proj.analyses.CFGEmulated()
+        # cfg = proj.analyses.CFGFast()
+        for func in cfg.kb.functions.values():
+            if output_path is not None:
+                handle_function(cfg.kb.functions[func.addr], bin_file.strip(), output_path)
+            else:
+                feature = handle_function(cfg.kb.functions[func.addr], bin_file.strip())
+                if feature is not None:
+                    db[COL].insert(feature)
+    except Exception as e:
+        print("Exception->", bin_file)
 
 
 def main_text(text):
@@ -141,10 +145,13 @@ def main_text(text):
     if not os.path.isfile(text):
         print("文件不存在->", text)
         return
+    pool = mp.Pool(processes=8)
     with open(text, "r") as f:
         for line in f:
             print("正在提取->", line)
-            handle_bin(line.strip())
+            pool.apply_async(handle_bin, args=(line.strip(),))
+        pool.close()
+        pool.join()
 
 
 if __name__ == "__main__":
