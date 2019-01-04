@@ -6,6 +6,7 @@ import os
 from angrutils import *
 import multiprocessing as mp
 import pymongo
+import json
 
 # 数据库链接URL
 DBURL = "mongodb://10.10.2.192:27017/"
@@ -110,7 +111,7 @@ def handle_function(entry_func, bin_path, output_path=None):
         return function_feature
     else:
         with open(output_path, "a+", encoding="utf-8") as f:
-            f.writelines(str(function_feature) + '\n')
+            f.writelines(json.JSONEncoder().encode(function_feature) + '\n')
 
 
 def handle_bin(bin_file, output_path=None):
@@ -123,8 +124,8 @@ def handle_bin(bin_file, output_path=None):
         db = client[DB]
     try:
         proj = angr.Project(bin_file, auto_load_libs=False)
-        cfg = proj.analyses.CFGEmulated()
-        # cfg = proj.analyses.CFGFast()
+        # cfg = proj.analyses.CFGEmulated()
+        cfg = proj.analyses.CFGFast()
         for func in cfg.kb.functions.values():
             if output_path is not None:
                 handle_function(cfg.kb.functions[func.addr], bin_file.strip(), output_path)
