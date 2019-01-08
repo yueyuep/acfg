@@ -95,6 +95,8 @@ def handle_function(entry_func, bin_path, output_path=None):
     for blk in entry_func.blocks:
         function_feature["features"].append(handle_block(blk, f_no_string))
         block_cnt = block_cnt + 1
+        if 256 <= block_cnt:
+            return
     function_feature["block"] = block_cnt
     # 节点数目为0时直接返回
     if 0 == len(entry_func.graph):
@@ -110,7 +112,7 @@ def handle_function(entry_func, bin_path, output_path=None):
     if output_path is None:
         return function_feature
     else:
-        with open(output_path, "a+", encoding="utf-8") as f:
+        with open(output_path, "a", encoding="utf-8") as f:
             f.writelines(json.JSONEncoder().encode(function_feature) + '\n')
 
 
