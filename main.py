@@ -97,12 +97,17 @@ def handle_function(entry_func, bin_path, output_path=None):
         block_cnt = block_cnt + 1
         if 256 <= block_cnt:
             return
+    # 基本块数目为0时直接返回
+    if 0 == len(function_feature["features"]):
+        return
     function_feature["block"] = block_cnt
     # 节点数目为0时直接返回
     if 0 == len(entry_func.graph):
         return
     # 节点的邻接矩阵
     matrix = nx.adjacency_matrix(entry_func.graph).todense().tolist()
+    if len(matrix) != len(function_feature["features"]):
+        return
     for i, line in enumerate(matrix):
         # 当前节点到自己无边
         line[i] = 0
@@ -124,19 +129,20 @@ def handle_bin(bin_file, output_path=None):
     if output_path is None:
         client = pymongo.MongoClient(DBURL)
         db = client[DB]
-    try:
-        proj = angr.Project(bin_file, auto_load_libs=False)
-        # cfg = proj.analyses.CFGEmulated()
-        cfg = proj.analyses.CFGFast()
-        for func in cfg.kb.functions.values():
+
+    proj = angr.Project(bin_file, auto_load_libs=False)
+    # cfg = proj.analyses.CFGEmulated()
+    cfg = proj.analyses.CFGFast()
+    for func in cfg.kb.functions.values():
+        try:
             if output_path is not None:
                 handle_function(cfg.kb.functions[func.addr], bin_file.strip(), output_path)
             else:
                 feature = handle_function(cfg.kb.functions[func.addr], bin_file.strip())
                 if feature is not None:
                     db[COL].insert(feature)
-    except Exception as e:
-        print("Exception->", bin_file)
+        except Exception as e:
+            print("Exception->", e, bin_file, ", ", str(func.name))
 
 
 def main_text(text):
