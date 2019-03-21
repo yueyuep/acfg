@@ -3,6 +3,10 @@ Extracting the ACFG feature of each function from the binary file based on angr.
 
 基于angr从二进制文件中提取每个函数的ACFG特征。
 
+<p align="center">
+    <img src="https://raw.githubusercontent.com/mayuanucas/acfg/master/data/acfg.svg"/>
+</p>
+
 ## Install
 ```python
 pip3 install -r requirements.txt
